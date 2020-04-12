@@ -10,39 +10,23 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #define RED "#FF7373"
 #define ORANGE "#FFA500"
 
 typedef unsigned long long int ulli;
-
-void usage(char *argv[])
-{
-  printf("Usage: %s "
-         "[-t seconds] [-w %%age] [-c %%age] [-d decimals] [-l label] [-h]\n",
-         argv[0]);
-  printf("\n");
-  printf("-t seconds\trefresh time (default is 1)\n");
-  printf("-w %%\tSet warning (color orange) for cpu usage. (default: none)\n");
-  printf("-c %%\tSet critical (color red) for cpu usage. (default: none)\n");
-  printf("-d number\tNumber of decimal places for percentage (default: 2)\n");
-  printf("-l label\tLabel to print before the cpu usage (default: CPU)\n");
-  printf("-h \t\tthis help\n");
-  printf("\n");
-}
-
 void display(const char *label, double used,
-             int const warning, int const critical, int const decimals)
+             int const warning, int const critical)
 {
   if (critical != 0 && used > critical) {
-    printf("%s<span color='%s'>", label, RED);
+    printf("{\"full_text\": \"%3.0lf%%\", \"color\": \"" RED "\"}\n", used);
   } else if (warning != 0 && used > warning) {
-    printf("%s<span color='%s'>", label, ORANGE);
+    printf("{\"full_text\": \"%3.0lf%%\", \"color\": \"" ORANGE "\"}\n", used);
   } else {
-    printf("%s<span>", label);
+    printf("{\"full_text\": \"%3.0lf%%\"}\n", used);
   }
-
-  printf("%*.*lf%%</span>\n", decimals + 3 + 1, decimals, used);
 }
 
 ulli get_usage(ulli *used_jiffies)
@@ -55,8 +39,8 @@ ulli get_usage(ulli *used_jiffies)
     exit(EXIT_FAILURE);
   }
   if (fscanf(fd, "cpu  %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-             &user, &nice, &sys, &idle, &iowait, &irq, &sirq,
-             &steal, &guest, &nguest) != 10) {
+        &user, &nice, &sys, &idle, &iowait, &irq, &sirq,
+        &steal, &guest, &nguest) != 10) {
     perror("Couldn't read jiffies from /proc/stat\n");
     exit(EXIT_FAILURE);
   }
@@ -68,67 +52,29 @@ ulli get_usage(ulli *used_jiffies)
 
 int main(int argc, char *argv[])
 {
-  int warning = 50, critical = 80, t = 1, decimals = 2;
-  char *label = "CPU ";
-  int c;
-  char *envvar = NULL;
+  int warning = 50, critical = 80, t = 3;
 
-  envvar = getenv("REFRESH_TIME");
-  if (envvar)
-    t = atoi(envvar);
-  envvar = getenv("WARN_PERCENT");
-  if (envvar)
-    warning = atoi(envvar);
-  envvar = getenv("CRIT_PERCENT");
-  if (envvar)
-    critical = atoi(envvar);
-  envvar = getenv("DECIMALS");
-  if (envvar)
-    decimals = atoi(envvar);
-  envvar = getenv("LABEL");
-  if (envvar)
-    label = envvar;
-
-  while (c = getopt(argc, argv, "ht:w:c:d:l:"), c != -1) {
-    switch (c) {
-    case 't':
-      t = atoi(optarg);
-      break;
-    case 'w':
-      warning = atoi(optarg);
-      break;
-    case 'c':
-      critical = atoi(optarg);
-      break;
-    case 'd':
-      decimals = atoi(optarg);
-      break;
-    case 'l':
-      label = optarg;
-      break;
-    case 'h':
-      usage(argv);
-      return EXIT_SUCCESS;
-    }
-  }
+  const char *label = "CPU";
 
   ulli old_total;
   ulli old_used;
 
   old_total = get_usage(&old_used);
+  sleep(1);
 
   while (1) {
     ulli used;
     ulli total;
 
-    sleep(t);
     total = get_usage(&used);
 
     display(label, 100.0D * (used - old_used) / (total - old_total),
-            warning, critical, decimals);
+            warning, critical);
     fflush(stdout);
     old_total = total;
     old_used = used;
+
+    sleep(t);
   }
 
   return EXIT_SUCCESS;
